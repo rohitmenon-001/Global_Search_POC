@@ -1,11 +1,12 @@
+import os
 import cx_Oracle
 
-# Placeholder credentials - replace with real values or load from config
-ORACLE_HOST = "your_host"
-ORACLE_PORT = 1521
-ORACLE_SERVICE_NAME = "your_service"
-ORACLE_USER = "your_user"
-ORACLE_PASSWORD = "your_password"
+# Placeholder credentials - can be overridden by environment variables
+ORACLE_HOST = os.getenv("ORACLE_HOST", "your_host")
+ORACLE_PORT = int(os.getenv("ORACLE_PORT", "1521"))
+ORACLE_SERVICE_NAME = os.getenv("ORACLE_SERVICE_NAME", "your_service")
+ORACLE_USER = os.getenv("ORACLE_USER", "your_user")
+ORACLE_PASSWORD = os.getenv("ORACLE_PASSWORD", "your_password")
 
 
 def get_oracle_connection():
