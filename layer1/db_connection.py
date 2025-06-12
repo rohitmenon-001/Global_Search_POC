@@ -1,10 +1,12 @@
-"""Database connection utilities for H2."""
+import jaydebeapi
+from config import db_config
 
-from pathlib import Path
 
-H2_JAR = Path(__file__).resolve().parents[1] / 'h2_db' / 'h2-2.x.x.jar'
-SCHEMA_SQL = Path(__file__).resolve().parents[1] / 'h2_db' / 'schema.sql'
-
-def get_connection_string(database_path: str) -> str:
-    """Return a JDBC connection string for the H2 database."""
-    return f"jdbc:h2:{database_path}"
+def get_db_connection():
+    conn = jaydebeapi.connect(
+        "org.h2.Driver",
+        db_config.JDBC_URL,
+        [db_config.DB_USER, db_config.DB_PASSWORD],
+        db_config.H2_JAR_PATH
+    )
+    return conn
