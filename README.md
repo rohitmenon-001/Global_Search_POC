@@ -1,44 +1,29 @@
-# Global Search POC
+# Global Search POC — Layer 1 Architecture
 
-This repository demonstrates a basic global search pipeline using a small H2
-database. The code is organised as a set of lightweight modules that can be
-expanded into a full search service. The key directories are shown below.
+A POC implementation of Layer 1 for RecVue's Global Search architecture using H2 (Oracle mock), Delta Refresh logic, Embedding Generation, and ChromaDB semantic search.
 
-```
-global-search-poc/
-│
-├── README.md
-├── requirements.txt
-├── h2_db/
-│   ├── schema.sql            # DB table creation scripts
-│   └── h2-2.x.x.jar          # H2 JDBC jar (local copy for reference)
-│
-├── layer1/
-│   ├── __init__.py           # Package marker
-│   ├── db_connection.py      # DB connection logic (reusable)
-│   ├── layer1_inserter.py    # Insert + change log logic
-│   ├── delta_extractor.py    # Extract deltas from change log
-│   └── db_sanity_check.py    # Quick health check of DB
-│
-├── delta_refresh_engine/
-│   ├── __init__.py
-│   └── delta_refresh_engine.py  # Refresh loop skeleton
-│
-├── chromadb_integration/     # Future: code to feed ChromaDB
-│   └── (future scripts)
-│
-└── utils/                    # Optional helpers
-    └── (empty for now)
-```
+## Architecture Overview
 
-An additional `evaluation/` folder contains benchmarking documentation for
-future reference.
+- **Database Layer**: H2 Oracle-compatible mock
+- **Delta Refresh Layer**: change log extraction
+- **Embedding Layer**: sentence-transformers
+- **Semantic Search Layer**: ChromaDB integration
 
-To get started, install the required dependencies:
+## Setup Instructions
 
-```bash
-pip install -r requirements.txt
-```
+1. Clone repo
+2. Install requirements via `pip install -r requirements.txt`
+3. Download the H2 jar file and update the path in `config/db_config.py`
+4. Create the schema by executing `database/schema.sql` inside the H2 console
+5. Start inserting data (`layer1/inserter.py`)
+6. Run the delta refresh pipeline (`delta_refresh/pipeline.py`)
+7. Perform semantic search (`chromadb/chroma_query.py`)
 
-The modules are placeholders and do not yet provide a working application.
-They are intended as a starting point for further development.
+## Future Enhancements
+
+- Full Oracle CDC integration
+- Production-scale embedding pipelines
+- Multi-tenant ChromaDB design
+
+---
+**Author:** Rohit Menon
