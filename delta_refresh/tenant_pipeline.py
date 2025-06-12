@@ -34,5 +34,10 @@ def run_tenant_pipeline():
         conn.close()
 
 
+def process_tenant_pipeline():
+    """Alias for ``run_tenant_pipeline`` for compatibility."""
+    run_tenant_pipeline()
+
+
 if __name__ == "__main__":
     run_tenant_pipeline()
