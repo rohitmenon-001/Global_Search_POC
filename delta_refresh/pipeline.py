@@ -1,11 +1,6 @@
 from layer1.db_connection import get_db_connection
 from chromadb.chroma_client import upsert_embedding
-
-
-def generate_embedding(sentence: str):
-    """Return a dummy embedding for the given sentence."""
-    length = float(len(sentence))
-    return [length, length / 2, length / 3]
+from utils.embedding_generator import generate_embedding
 
 
 def run_pipeline():
