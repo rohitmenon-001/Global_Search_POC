@@ -1,6 +1,6 @@
 jaydebeapi
 pandas
 schedule
-cx_Oracle
+#cx_Oracle
 chromadb
 sentence-transformers

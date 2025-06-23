@@ -7,23 +7,20 @@ def insert_order(order_id, customer_id, order_date, amount, status):
     curs = conn.cursor()
 
     try:
+        # Convert Python date into string for JDBC compatibility
+        order_date_str = order_date.strftime("%Y-%m-%d")
+
         # Insert into orders table
-        curs.execute(
-            """
+        curs.execute("""
             INSERT INTO orders (order_id, customer_id, order_date, amount, status)
             VALUES (?, ?, ?, ?, ?)
-            """,
-            (order_id, customer_id, order_date, amount, status),
-        )
+        """, (order_id, customer_id, order_date_str, amount, status))
 
-        # Log into change_log table
-        curs.execute(
-            """
-            INSERT INTO change_log (table_name, record_id, change_type)
-            VALUES ('orders', ?, 'INSERT')
-            """,
-            (order_id,),
-        )
+        # Log into change_log table (with tenant_id support)
+        curs.execute("""
+            INSERT INTO change_log (table_name, record_id, change_type, tenant_id)
+            VALUES ('orders', ?, 'INSERT', 'tenant_ABC')
+        """, (order_id,))
 
         conn.commit()
     finally:
@@ -33,4 +30,6 @@ def insert_order(order_id, customer_id, order_date, amount, status):
 
 # Example usage
 if __name__ == "__main__":
-    insert_order("O1001", "C100", datetime.date.today(), 5000.00, "PAID")
+    insert_order("O2021", "C210", datetime.date.today(), 9999.00, "PAID")
+
+
