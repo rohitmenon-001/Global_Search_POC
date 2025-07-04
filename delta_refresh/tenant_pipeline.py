@@ -19,35 +19,35 @@ def run_tenant_pipeline():
                 # Join ORDER_HEADER_ALL, ORDER_LINES_ALL, BILLING_SCHEDULES_ALL, etc.
                 cur.execute(
                     '''
-                    SELECT h.ORDER_ID, h.ORDER_NUMBER, h.ORDER_DATE, h.CUSTOMER_ID, h.STATUS,
-                           l.LINE_ID, l.PRODUCT_ID, l.QUANTITY, l.UNIT_PRICE,
-                           b.BILLING_SCH_ID, b.BILLING_TYPE,
-                           d.DELIVERY_ID, d.DELIVERY_DATE,
-                           p.PRICING_SCH_ID, p.PRICING_TYPE
-                    FROM ORDER_HEADER_ALL h
+                    SELECT h.ORDER_ID, h.ORDER_NUMBER, h.BOOKED_DATE, h.SELL_TO_CUSTOMER_ID, h.STATUS,
+                           l.LINE_ID, l.ITEM_ID, l.ORDERED_QUANTITY, l.UNIT_PRICE,
+                           b.BILLING_SCH_ID, b.BILLING_LINE_TYPE,
+                           d.DELIVERY_ID, d.DELIVERY_DATE_FROM,
+                           p.PRICING_SCH_ID, p.PRICING_STATUS
+                    FROM (
+                        SELECT * FROM ORDER_HEADER_ALL WHERE ROWNUM <= 50
+                    ) h
                     LEFT JOIN ORDER_LINES_ALL l ON h.ORDER_ID = l.ORDER_ID
                     LEFT JOIN BILLING_SCHEDULES_ALL b ON h.ORDER_ID = b.ORDER_ID
                     LEFT JOIN ORDER_DELIVERIES_ALL d ON h.ORDER_ID = d.ORDER_ID
                     LEFT JOIN PRICING_SCHEDULES_ALL p ON h.ORDER_ID = p.ORDER_ID
-                    WHERE h.ORDER_ID = :1
-                    ''', [record_id]
-                )
+                    ''')
                 row = cur.fetchone()
                 if not row:
                     print(f"⚠️ No data found for ORDER_ID {record_id}, skipping.")
                     continue
 
                 # Unpack and build a descriptive sentence
-                (order_id, order_number, order_date, customer_id, status,
-                 line_id, product_id, quantity, unit_price,
-                 billing_sch_id, billing_type,
-                 delivery_id, delivery_date,
-                 pricing_sch_id, pricing_type) = row
+                (order_id, order_number, booked_date, sell_to_customer_id, status,
+                 line_id, item_id, ordered_quantity, unit_price,
+                 billing_sch_id, billing_line_type,
+                 delivery_id, delivery_date_from,
+                 pricing_sch_id, pricing_status) = row
 
                 sentence = (
-                    f"Order {order_number} (ID: {order_id}) for customer {customer_id} on {order_date}, "
-                    f"status: {status}, line: {line_id}, product: {product_id}, qty: {quantity}, price: {unit_price}, "
-                    f"billing: {billing_type}, delivery: {delivery_date}, pricing: {pricing_type}"
+                                    f"Order {order_number} (ID: {order_id}) for customer {sell_to_customer_id} on {booked_date}, "
+                f"status: {status}, line: {line_id}, item: {item_id}, qty: {ordered_quantity}, price: {unit_price}, "
+                f"billing: {billing_line_type}, delivery from: {delivery_date_from}, pricing status: {pricing_status}"
                 )
 
                 embedding = generate_embedding(sentence)
