@@ -8,7 +8,7 @@ st.set_page_config(page_title="RecVue Global Search", page_icon=":mag:", layout=
 # Load and display logo
 logo = Image.open("logo.jpg")  # Ensure correct path
 st.sidebar.image(logo, width=120)
-st.sidebar.title("🔎 RecVue Copilot")
+st.sidebar.title("Global Search")
 st.sidebar.markdown("Multi-Tenant Semantic Search Demo")
 
 # ---- Tenant Selection and Session State ----

@@ -5,7 +5,7 @@ from chroma_module.multitenant_chroma import upsert_tenant_embedding
 print("✅ Imported tenant_pipeline")
 
 def run_tenant_pipeline():
-    """Process change_log entries on a per-tenant basis."""
+    """Process change_log entries on a per-tenant basis using Oracle join strategy."""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -16,19 +16,38 @@ def run_tenant_pipeline():
 
             for record_id, tenant_id in changes:
                 print(f"🔍 Looking up full order data for record_id: {record_id}")
+                # Join ORDER_HEADER_ALL, ORDER_LINES_ALL, BILLING_SCHEDULES_ALL, etc.
                 cur.execute(
-                    "SELECT order_id, customer_id, order_date, amount, status FROM orders WHERE order_id = ?",
-                    (record_id,),
+                    '''
+                    SELECT h.ORDER_ID, h.ORDER_NUMBER, h.ORDER_DATE, h.CUSTOMER_ID, h.STATUS,
+                           l.LINE_ID, l.PRODUCT_ID, l.QUANTITY, l.UNIT_PRICE,
+                           b.BILLING_SCH_ID, b.BILLING_TYPE,
+                           d.DELIVERY_ID, d.DELIVERY_DATE,
+                           p.PRICING_SCH_ID, p.PRICING_TYPE
+                    FROM ORDER_HEADER_ALL h
+                    LEFT JOIN ORDER_LINES_ALL l ON h.ORDER_ID = l.ORDER_ID
+                    LEFT JOIN BILLING_SCHEDULES_ALL b ON h.ORDER_ID = b.ORDER_ID
+                    LEFT JOIN ORDER_DELIVERIES_ALL d ON h.ORDER_ID = d.ORDER_ID
+                    LEFT JOIN PRICING_SCHEDULES_ALL p ON h.ORDER_ID = p.ORDER_ID
+                    WHERE h.ORDER_ID = :1
+                    ''', [record_id]
                 )
                 row = cur.fetchone()
                 if not row:
-                    print(f"⚠️ No data found for order_id {record_id}, skipping.")
+                    print(f"⚠️ No data found for ORDER_ID {record_id}, skipping.")
                     continue
 
-                order_id, customer_id, order_date, amount, status = row
+                # Unpack and build a descriptive sentence
+                (order_id, order_number, order_date, customer_id, status,
+                 line_id, product_id, quantity, unit_price,
+                 billing_sch_id, billing_type,
+                 delivery_id, delivery_date,
+                 pricing_sch_id, pricing_type) = row
+
                 sentence = (
-                    f"Order {order_id} for customer {customer_id} on {order_date} "
-                    f"amount {amount} status {status}"
+                    f"Order {order_number} (ID: {order_id}) for customer {customer_id} on {order_date}, "
+                    f"status: {status}, line: {line_id}, product: {product_id}, qty: {quantity}, price: {unit_price}, "
+                    f"billing: {billing_type}, delivery: {delivery_date}, pricing: {pricing_type}"
                 )
 
                 embedding = generate_embedding(sentence)

@@ -1,64 +1,78 @@
-import os
-import cx_Oracle
+import oracledb
+from config import db_config
 
-# Placeholder credentials - can be overridden by environment variables
-ORACLE_HOST = os.getenv("ORACLE_HOST", "your_host")
-ORACLE_PORT = int(os.getenv("ORACLE_PORT", "1521"))
-ORACLE_SERVICE_NAME = os.getenv("ORACLE_SERVICE_NAME", "your_service")
-ORACLE_USER = os.getenv("ORACLE_USER", "your_user")
-ORACLE_PASSWORD = os.getenv("ORACLE_PASSWORD", "your_password")
-
+# Initialize Oracle client (if needed)
+# oracledb.init_oracle_client(lib_dir=None)  # Uncomment if using Oracle Instant Client
 
 def get_oracle_connection():
-    """Return a live Oracle DB connection."""
-    dsn = cx_Oracle.makedsn(ORACLE_HOST, ORACLE_PORT, service_name=ORACLE_SERVICE_NAME)
-    conn = None
     try:
-        conn = cx_Oracle.connect(
-            user=ORACLE_USER,
-            password=ORACLE_PASSWORD,
-            dsn=dsn,
+        conn = oracledb.connect(
+            user=db_config.ORACLE_USER,
+            password=db_config.ORACLE_PASSWORD,
+            dsn=db_config.ORACLE_DSN
         )
-    except cx_Oracle.Error as err:
-        print(f"Oracle connection error: {err}")
-    finally:
         return conn
-
+    except oracledb.DatabaseError as err:
+        print(f"Oracle connection error: {err}")
+        return None
 
 def fetch_change_log():
-    """Fetch all records from the change_log table."""
     conn = get_oracle_connection()
     if conn is None:
         return []
-    cur = conn.cursor()
     try:
-        cur.execute("SELECT table_name, record_id, change_type FROM change_log")
+        cur = conn.cursor()
+        cur.execute("SELECT table_name, record_id, change_type, tenant_id FROM change_log")
         rows = cur.fetchall()
         return rows
-    except cx_Oracle.Error as err:
+    except oracledb.DatabaseError as err:
         print(f"Error querying change_log: {err}")
         return []
     finally:
-        cur.close()
-        conn.close()
-
+        if conn:
+            conn.close()
 
 def fetch_order_by_id(record_id):
-    """Fetch a single order record by ID."""
     conn = get_oracle_connection()
     if conn is None:
         return None
-    cur = conn.cursor()
     try:
+        cur = conn.cursor()
         cur.execute(
             "SELECT order_id, customer_id, order_date, amount, status FROM orders WHERE order_id = :1",
-            (record_id,),
+            (record_id,)
         )
         row = cur.fetchone()
         return row
-    except cx_Oracle.Error as err:
+    except oracledb.DatabaseError as err:
         print(f"Error querying orders table: {err}")
         return None
     finally:
-        cur.close()
-        conn.close()
+        if conn:
+            conn.close()
+
+def insert_order(order_id, customer_id, order_date, amount, status, tenant_id="tenant_ABC"):
+    conn = get_oracle_connection()
+    if conn is None:
+        return False
+    try:
+        cur = conn.cursor()
+        # Insert order
+        cur.execute("""
+            INSERT INTO orders (order_id, customer_id, order_date, amount, status)
+            VALUES (:1, :2, :3, :4, :5)
+        """, (order_id, customer_id, order_date, amount, status))
+        # Log change
+        cur.execute("""
+            INSERT INTO change_log (table_name, record_id, change_type, tenant_id)
+            VALUES ('orders', :1, 'INSERT', :2)
+        """, (order_id, tenant_id))
+        conn.commit()
+        return True
+    except oracledb.DatabaseError as err:
+        print(f"Error inserting order: {err}")
+        conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()

@@ -5,7 +5,6 @@ from chroma_module.multitenant_chroma import upsert_tenant_embedding, get_tenant
 #from auth_middleware import tenant_auth_required
 from auth.tenant_auth import tenant_auth_required
 
-
 import datetime
 
 app = Flask(__name__)
@@ -15,9 +14,9 @@ app = Flask(__name__)
 def insert_order(tenant_id):
     data = request.json
     order_id = data.get("order_id")
+    order_number = data.get("order_number")
     customer_id = data.get("customer_id")
     order_date = data.get("order_date", str(datetime.date.today()))
-    amount = float(data.get("amount", 0))
     status = data.get("status", "PENDING")
 
     conn = get_db_connection()
@@ -25,14 +24,14 @@ def insert_order(tenant_id):
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO orders (order_id, customer_id, order_date, amount, status)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO ORDER_HEADER_ALL (ORDER_ID, ORDER_NUMBER, ORDER_DATE, CUSTOMER_ID, STATUS)
+            VALUES (:1, :2, :3, :4, :5)
             """,
-            (order_id, customer_id, order_date, amount, status)
+            [order_id, order_number, order_date, customer_id, status]
         )
         cur.execute(
-            "INSERT INTO change_log (record_id, tenant_id) VALUES (?, ?)",
-            (order_id, tenant_id)
+            "INSERT INTO change_log (record_id, tenant_id) VALUES (:1, :2)",
+            [order_id, tenant_id]
         )
         conn.commit()
     except Exception as e:

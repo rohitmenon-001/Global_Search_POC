@@ -1,5 +1,5 @@
 from layer1.db_connection import get_db_connection
-from chromadb.chroma_client import upsert_embedding
+from chroma_module.chroma_client import upsert_embedding
 from utils.embedding_generator import generate_embedding
 
 
