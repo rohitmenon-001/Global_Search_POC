@@ -109,3 +109,14 @@ python test_visual_search.py
 
 ---
 **Author:** Rohit Menon
+
+---
+
+## 📝 Recent Execution & Troubleshooting Notes
+
+- **Streamlit selectbox duplicate key error**: Fixed by adding unique `key` arguments to all `st.selectbox` widgets. If you see a `StreamlitDuplicateElementId` or `StreamlitDuplicateElementKey` error, ensure every widget has a unique `key`.
+- **Dropdowns**: Both the demo query and result details dropdowns now work as expected and update the UI immediately.
+- **Paging file too small**: If you see `OSError: The paging file is too small for this operation to complete`, increase your Windows virtual memory (Control Panel → System → Advanced → Performance → Virtual Memory).
+- **Missing dependencies**: If you see `ModuleNotFoundError`, install the missing package with `pip install <package>` (e.g., `pip install flask plotly jaydebeapi`).
+- **Streamlit rerun issues**: If your version of Streamlit does not support `st.experimental_rerun` or `st._rerun`, use only session state and avoid rerun logic.
+- **Branch**: All recent changes are committed to the `semantic-search-visual-enhancements` branch.
