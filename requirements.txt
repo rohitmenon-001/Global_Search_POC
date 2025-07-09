@@ -4,3 +4,9 @@ schedule
 #cx_Oracle
 chromadb
 sentence-transformers
+pyautogen
+ollama
+fix-busted-json
+fastapi
+uvicorn
+numpy

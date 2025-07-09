@@ -11,6 +11,14 @@ from auth.tenant_auth import tenant_auth_required
 
 import datetime
 
+# Import RAG agent
+try:
+    from rag_agent import RAGAgent
+    RAG_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: RAG Agent not available: {e}")
+    RAG_AVAILABLE = False
+
 app = Flask(__name__)
 
 @app.route("/api/tenant/<tenant_id>/orders", methods=["POST"])
@@ -79,6 +87,43 @@ def semantic_search(tenant_id):
         })
 
     return jsonify(response), 200
+
+
+@app.route("/api/tenant/<tenant_id>/ai/query", methods=["POST"])
+@tenant_auth_required
+def ai_query(tenant_id):
+    """AI-powered query endpoint using RAG agent"""
+    if not RAG_AVAILABLE:
+        return jsonify({"error": "RAG Agent not available"}), 503
+    
+    data = request.json
+    query = data.get("query", "")
+    
+    if not query.strip():
+        return jsonify({"error": "Query is required"}), 400
+    
+    try:
+        # Initialize RAG agent for the tenant
+        agent = SimpleRAGAgent(tenant_id=tenant_id)
+        
+        # Generate response
+        result = agent.generate_response(query)
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/tenant/<tenant_id>/ai/status", methods=["GET"])
+@tenant_auth_required
+def ai_status(tenant_id):
+    """Check AI/RAG agent status"""
+    return jsonify({
+        "rag_available": RAG_AVAILABLE,
+        "tenant_id": tenant_id,
+        "status": "ready" if RAG_AVAILABLE else "unavailable"
+    }), 200
 
 
 if __name__ == "__main__":
