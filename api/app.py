@@ -13,7 +13,7 @@ import datetime
 
 # Import RAG agent
 try:
-    from rag_agent import RAGAgent
+    from rag_agent_simple import SimpleRAGAgent
     RAG_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: RAG Agent not available: {e}")

@@ -39,36 +39,46 @@ def test_ollama():
         if available_models:
             print(f"✅ Available models: {', '.join(available_models)}")
             
-            # Test 3: Test model inference
-            print(f"\n3. Testing inference with model: {available_models[0]}")
-            test_model = available_models[0].split(':')[0]  # Remove tag if present
-            
-            test_payload = {
-                "model": test_model,
-                "prompt": "Hello, this is a test. Please respond with 'Test successful'.",
-                "stream": False,
-                "options": {
-                    "temperature": 0.7,
-                    "num_predict": 50
+            # Test 3: Test inference with llama3:8b if available
+            llama3_model = None
+            for model in available_models:
+                if model == "llama3:8b":
+                    llama3_model = model
+                    break
+
+            if llama3_model:
+                print(f"\n3. Testing inference with model: {llama3_model}")
+                test_model = llama3_model  # Use llama3:8b
+
+                test_payload = {
+                    "model": test_model,
+                    "prompt": "Hello, this is a test. Please respond with 'Test successful'.",
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.7,
+                        "num_predict": 50
+                    }
                 }
-            }
-            
-            print("   Sending test request...")
-            inference_response = requests.post(
-                "http://localhost:11434/api/generate",
-                json=test_payload,
-                timeout=30
-            )
-            
-            if inference_response.status_code == 200:
-                response_data = inference_response.json()
-                response_text = response_data.get('response', '')
-                print(f"✅ Model inference successful!")
-                print(f"   Response: {response_text[:100]}...")
-                return True
+
+                print("   Sending test request...")
+                inference_response = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json=test_payload,
+                    timeout=30
+                )
+
+                if inference_response.status_code == 200:
+                    response_data = inference_response.json()
+                    response_text = response_data.get('response', '')
+                    print(f"✅ Model inference successful!")
+                    print(f"   Response: {response_text[:100]}...")
+                    return True
+                else:
+                    print(f"❌ Model inference failed: {inference_response.status_code}")
+                    print(f"   Response: {inference_response.text}")
+                    return False
             else:
-                print(f"❌ Model inference failed: {inference_response.status_code}")
-                print(f"   Response: {inference_response.text}")
+                print("❌ Model 'llama3:8b' not found in available models.")
                 return False
         else:
             print("❌ No models available. Please pull a model first.")

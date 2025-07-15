@@ -386,7 +386,10 @@ with tab2:
                         st.session_state['last_ai_table_data'] = result.get('table_data')
                         st.session_state['last_ai_viz_code'] = result.get('visualization_code')
                         st.session_state['last_ai_intent'] = result.get('intent')
-                        st.session_state['show_visualization'] = False  # Reset visualization toggle on new response
+                        st.session_state['last_ai_chart_recommendation'] = result.get('chart_recommendation')
+                        st.session_state['last_ai_chart_figure'] = result.get('chart_figure')
+                        st.session_state['last_ai_table_dataframe'] = result.get('table_dataframe')
+                        st.session_state['show_visualization'] = False
                         
                         if result['status'] == 'success':
                             # ---- AI Response Display ----
@@ -401,12 +404,13 @@ with tab2:
                             cleaned = cleaned.strip()
                             # Render as markdown, compact like chat history
                             st.markdown(f"**🤖 Answer**\n\n{cleaned}", unsafe_allow_html=False)
-                            # Display table data if available
+
+                            # --- Always try to display a table and chart ---
                             table_data = result.get('table_data')
+                            df = None
                             if table_data and isinstance(table_data, str):
                                 st.markdown('#### 📊 Data Table')
                                 st.markdown(table_data)
-                                # Try to parse as DataFrame for better display
                                 try:
                                     import io
                                     df = pd.read_csv(io.StringIO(table_data), sep='|').dropna(axis=1, how='all')
@@ -414,18 +418,56 @@ with tab2:
                                     st.dataframe(df)
                                 except Exception as e:
                                     st.warning(f"Could not parse table data: {e}")
-                            elif result.get('intent', {}).get('needs_table'):
-                                st.info('Table was requested but could not be generated.')
-                            # Optional: Show raw JSON in an expander for advanced users
-                            json_match = re.search(r'```json\s*([\s\S]+?)\s*```', response_text)
-                            if json_match:
-                                with st.expander('Show Raw Data', expanded=False):
-                                    st.code(json_match.group(1), language='json')
-                            # Collapsible context
+                            else:
+                                # Try to extract a table from the text answer (fallback)
+                                import pandas as pd
+                                import re
+                                lines = [l.strip('-• ') for l in cleaned.split('\n') if l.strip().startswith(('1.', '2.', '3.', '4.', '5.', '-', '•'))]
+                                extracted = []
+                                for l in lines:
+                                    m = re.match(r"(?:Document|\d+)[^:]*: ([^(]+) \(ID: (\d+)\) with a total value of ([\d.]+)[^\(]*\(([^u]+)units x ([\d.]+)[^)]*\)", l)
+                                    if m:
+                                        order_name = m.group(1).strip()
+                                        order_id = m.group(2).strip()
+                                        value = m.group(3).strip()
+                                        units = m.group(4).strip()
+                                        price = m.group(5).strip()
+                                        extracted.append({
+                                            'Order Name': order_name,
+                                            'Order ID': order_id,
+                                            'Value': float(value),
+                                            'Units': float(units),
+                                            'Price per unit': float(price)
+                                        })
+                                    else:
+                                        extracted.append({'Order Name': l})
+                                if extracted and any('Value' in row for row in extracted):
+                                    df = pd.DataFrame(extracted)
+                                    st.markdown('#### 📊 Extracted Data Table')
+                                    st.dataframe(df)
+                                elif extracted:
+                                    df = pd.DataFrame(extracted)
+                                    st.markdown('#### 📊 Extracted Data Table')
+                                    st.dataframe(df)
+
+                            # --- Display dynamic chart from AutoGen recommendation ---
+                            if result.get('chart_figure'):
+                                st.markdown('#### 📈 Dynamic Visualization')
+                                chart_recommendation = result.get('chart_recommendation', {})
+                                if chart_recommendation:
+                                    st.info(f"📊 Chart Type: {chart_recommendation.get('chart_type', 'Unknown')} - {chart_recommendation.get('reasoning', 'No reasoning provided')}")
+                                st.plotly_chart(result['chart_figure'], use_container_width=True)
+                            # --- Fallback: Always try to show a chart if possible ---
+                            elif df is not None and 'Order Name' in df.columns and 'Value' in df.columns:
+                                st.markdown('#### 📈 Order Value Chart')
+                                import plotly.express as px
+                                fig = px.bar(df, x='Order Name', y='Value', title='Order Value by Order Name')
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            # Context and model info
                             with st.expander("🔍 View AI's Context", expanded=False):
                                 st.markdown("**Context used by AI:**")
                                 st.code(result['context'], language='markdown')
-                            # Model information
                             st.info(f"🤖 Model used: {result.get('model_used', 'Unknown')}")
                             # Add to chat history
                             if 'ai_chat_history' not in st.session_state:
@@ -445,10 +487,11 @@ with tab2:
                 if 'show_visualization' not in st.session_state:
                     st.session_state['show_visualization'] = False
                 
-                # Show visualization button if we have visualization code or table data
+                # Show visualization button if we have visualization code, table data, or chart recommendation
                 last_ai_intent = st.session_state.get('last_ai_intent', {})
                 has_viz_content = (st.session_state.get('last_ai_viz_code') or 
                                  st.session_state.get('last_ai_table_data') or
+                                 st.session_state.get('last_ai_chart_figure') or
                                  (isinstance(last_ai_intent, dict) and last_ai_intent.get('needs_visualization')))
                 
                 if has_viz_content:
@@ -458,7 +501,16 @@ with tab2:
                     if st.session_state.get('show_visualization', False):
                         st.markdown('#### 📊 Data Visualization')
                         
-                        # First, try to execute AI-generated visualization code
+                        # First, try to display AutoGen chart recommendation
+                        chart_figure = st.session_state.get('last_ai_chart_figure')
+                        if chart_figure:
+                            st.markdown('##### 🤖 AutoGen Chart Recommendation')
+                            chart_recommendation = st.session_state.get('last_ai_chart_recommendation', {})
+                            if chart_recommendation:
+                                st.info(f"📊 Chart Type: {chart_recommendation.get('chart_type', 'Unknown')} - {chart_recommendation.get('reasoning', 'No reasoning provided')}")
+                            st.plotly_chart(chart_figure, use_container_width=True)
+                        
+                        # Second, try to execute AI-generated visualization code
                         viz_code = st.session_state.get('last_ai_viz_code')
                         if viz_code and isinstance(viz_code, str):
                             try:

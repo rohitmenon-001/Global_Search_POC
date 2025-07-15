@@ -21,7 +21,7 @@ class RAGAgent:
         """Set up the RAG agent configuration"""
         # We'll use direct Ollama API calls instead of AutoGen to avoid compatibility issues
         self.ollama_url = "http://localhost:11434/api/generate"
-        self.model_name = "llama3"
+        self.model_name = "llama3:8b"  # Use Llama 3 8B for best performance
         self.current_model = None
         
         # Test connection to Ollama
@@ -33,16 +33,32 @@ class RAGAgent:
                 # Get the actual model name being used
                 models_data = response.json()
                 available_models = [model.get('name', '') for model in models_data.get('models', [])]
-                if any(m.startswith('llama3') for m in available_models):
-                    for preferred in ['llama3:latest', 'llama3:8b', 'llama3']:
-                        for m in available_models:
-                            if m == preferred or m.startswith(preferred):
-                                self.current_model = m
-                                break
-                        if self.current_model:
+                
+                # Try to find a model that works with available memory
+                # Priority: best performance models first, with fallbacks
+                preferred_models = [
+                    'llama3:8b',  # Best performance model (4.7GB)
+                    'llama3:latest',  # Latest Llama 3 version
+                    'llama2:7b',  # Llama 2 7B version
+                    'llama2:7b-chat-q4_0',  # Quantized version
+                    'phi3:mini',  # Small working model (2.2GB)
+                    'tinyllama:1.1b',  # Compact model (637MB)
+                    'smollm2:135m',  # Very small model (270MB)
+                    'smollm2:135m-instruct-q4_K_S',  # Smallest quantized model (102MB)
+                ]
+                
+                for preferred in preferred_models:
+                    for m in available_models:
+                        if m == preferred or m.startswith(preferred):
+                            self.current_model = m
+                            print(f"✅ Selected model: {self.current_model}")
                             break
-                    if not self.current_model and available_models:
-                        self.current_model = available_models[0]
+                    if self.current_model:
+                        break
+                
+                if not self.current_model and available_models:
+                    self.current_model = available_models[0]
+                    print(f"⚠️ Using fallback model: {self.current_model}")
             else:
                 print("⚠️ Ollama connection test failed")
         except Exception as e:
@@ -224,7 +240,19 @@ VISUALIZATION: [python code if needed, otherwise "NONE"]
                     df = pd.DataFrame(extracted)
                     table_md = df.to_markdown(index=False)
                     table_data = table_md
-                    # Optionally, you can also return df for charting if needed
+                    # Store DataFrame for charting
+                    table_df = df
+            
+            # Use AutoGen agent to get chart recommendation
+            chart_recommendation = None
+            chart_fig = None
+            if 'table_df' in locals() and table_df is not None:
+                chart_recommendation = self.get_chart_recommendation(table_df, user_query)
+                if chart_recommendation and chart_recommendation.get("chart_type") != "none":
+                    chart_fig = self.generate_chart(table_df, chart_recommendation)
+                    if chart_fig:
+                        enhanced_text += f"\n\n## Chart Recommendation\nChart Type: {chart_recommendation.get('chart_type', 'Unknown')}\nReasoning: {chart_recommendation.get('reasoning', 'No reasoning provided')}"
+            
             return {
                 "query": user_query,
                 "context": context,
@@ -233,7 +261,10 @@ VISUALIZATION: [python code if needed, otherwise "NONE"]
                 "model_used": self.current_model or 'Unknown',
                 "table_data": table_data,
                 "visualization_code": viz_code,
-                "intent": intent
+                "intent": intent,
+                "chart_recommendation": chart_recommendation,
+                "chart_figure": chart_fig,
+                "table_dataframe": table_df if 'table_df' in locals() else None
             }
         except Exception as e:
             print(f"Error in data analysis enhancement: {e}")
@@ -255,20 +286,32 @@ VISUALIZATION: [python code if needed, otherwise "NONE"]
                     if response.status_code == 200:
                         models_data = response.json()
                         available_models = [model.get('name', '') for model in models_data.get('models', [])]
-                        if any(m.startswith('llama3') for m in available_models):
-                            for preferred in ['llama3:latest', 'llama3:8b', 'llama3']:
-                                for m in available_models:
-                                    if m == preferred or m.startswith(preferred):
-                                        self.current_model = m
-                                        break
-                                if self.current_model:
+                        # Try to find a model that works with available memory
+                        preferred_models = [
+                            'phi3:mini',  # Smallest working model
+                            'smollm2:135m',  # Very small model
+                            'smollm:135m',  # Another small model
+                            'tinyllama:1.1b',  # Compact model
+                            'llama2:7b-chat-q4_0',  # Quantized version
+                            'llama2:7b',  # Regular version
+                            'llama3:8b',  # Llama 3 version
+                            'llama3:latest'
+                        ]
+                        
+                        for preferred in preferred_models:
+                            for m in available_models:
+                                if m == preferred or m.startswith(preferred):
+                                    self.current_model = m
                                     break
+                            if self.current_model:
+                                break
+                        
                         if not self.current_model and available_models:
                             self.current_model = available_models[0]
                 except:
-                    self.current_model = "llama3"
+                    self.current_model = "llama3:8b"
             
-            # Direct Ollama API call
+            # Direct Ollama API call with memory optimization
             ollama_url = "http://localhost:11434/api/generate"
             payload = {
                 "model": self.current_model,
@@ -276,7 +319,9 @@ VISUALIZATION: [python code if needed, otherwise "NONE"]
                 "stream": False,
                 "options": {
                     "temperature": 0.7,
-                    "num_predict": 1500
+                    "num_predict": 1500,  # Increased for better responses
+                    "num_ctx": 4096,      # Larger context window
+                    "num_thread": 8       # More threads for better performance
                 }
             }
             
@@ -348,27 +393,40 @@ Answer:"""
                         "model_used": self.current_model or 'Unknown'
                     }
                 
-                # Check available models and select the best one
-                models_response = requests.get(health_url, timeout=5)
-                if models_response.status_code == 200:
-                    models_data = models_response.json()
-                    available_models = [model.get('name', '') for model in models_data.get('models', [])]
-                    model_name = None
-                    if any(m.startswith('llama3') for m in available_models):
-                        # Prefer llama3:latest or llama3:8b if available
-                        for preferred in ['llama3:latest', 'llama3:8b', 'llama3']:
+                # Use the current model from setup_agent
+                model_name = self.current_model
+                if not model_name:
+                    # Fallback: check available models and select the best one
+                    models_response = requests.get(health_url, timeout=5)
+                    if models_response.status_code == 200:
+                        models_data = models_response.json()
+                        available_models = [model.get('name', '') for model in models_data.get('models', [])]
+                        
+                        # Try to find a model that works with available memory
+                        preferred_models = [
+                            'phi3:mini',  # Smallest working model
+                            'smollm2:135m',  # Very small model
+                            'smollm:135m',  # Another small model
+                            'tinyllama:1.1b',  # Compact model
+                            'llama2:7b-chat-q4_0',  # Quantized version
+                            'llama2:7b',  # Regular version
+                            'llama3:8b',  # Llama 3 version
+                            'llama3:latest'
+                        ]
+                        
+                        for preferred in preferred_models:
                             for m in available_models:
                                 if m == preferred or m.startswith(preferred):
                                     model_name = m
                                     break
                             if model_name:
                                 break
-                        print(f"✅ Using model: {model_name}")
-                    elif available_models:
-                        model_name = available_models[0]
-                        print(f"⚠️ llama3 not found, using {model_name}")
+                        
+                        if not model_name and available_models:
+                            model_name = available_models[0]
+                            print(f"⚠️ Using fallback model: {model_name}")
                     else:
-                        response_text = "Error: No models available in Ollama. Please pull a model first."
+                        response_text = "Error: Could not retrieve models from Ollama."
                         return {
                             "query": user_query,
                             "context": context,
@@ -376,8 +434,9 @@ Answer:"""
                             "status": "error",
                             "model_used": self.current_model or 'Unknown'
                         }
-                else:
-                    response_text = "Error: Could not retrieve models from Ollama."
+                
+                if not model_name:
+                    response_text = "Error: No models available in Ollama. Please pull a model first."
                     return {
                         "query": user_query,
                         "context": context,
@@ -386,7 +445,7 @@ Answer:"""
                         "model_used": self.current_model or 'Unknown'
                     }
                 
-                # Direct Ollama API call with better timeout handling
+                # Direct Ollama API call with memory optimization
                 ollama_url = "http://localhost:11434/api/generate"
                 payload = {
                     "model": model_name,
@@ -394,7 +453,9 @@ Answer:"""
                     "stream": False,
                     "options": {
                         "temperature": 0.7,
-                        "num_predict": 1000
+                        "num_predict": 1500,  # Increased for better responses
+                        "num_ctx": 4096,      # Larger context window
+                        "num_thread": 8       # More threads for better performance
                     }
                 }
                 print(f"🔗 Sending request to Ollama with model: {model_name}")
@@ -432,6 +493,191 @@ Answer:"""
                 "status": "error",
                 "model_used": self.current_model or 'Unknown'
             }
+
+    def create_chart_recommendation_agent(self):
+        """Create an AutoGen agent for chart recommendation"""
+        try:
+            # Create the chart recommendation agent
+            chart_agent = AssistantAgent(
+                name="chart_recommender",
+                system_message="""You are an expert data visualization specialist. Your job is to analyze data and user queries to recommend the most appropriate chart type and configuration.
+
+Available chart types:
+- bar: For comparing categories or showing rankings
+- line: For trends over time or continuous data
+- pie: For showing proportions/percentages
+- scatter: For showing relationships between two variables
+- histogram: For showing distribution of a single variable
+- box: For showing statistical distribution
+- heatmap: For correlation matrices or 2D data
+- none: When no chart is appropriate
+
+Always respond in this exact JSON format:
+{
+    "chart_type": "chart_type_name",
+    "x_column": "column_name_for_x_axis",
+    "y_column": "column_name_for_y_axis",
+    "title": "Chart title",
+    "reasoning": "Brief explanation of why this chart type was chosen"
+}
+
+If no chart is appropriate, set chart_type to "none" and leave other fields empty except reasoning.""",
+                llm_config=self.llm_config
+            )
+            
+            return chart_agent
+        except Exception as e:
+            print(f"Error creating chart recommendation agent: {e}")
+            return None
+
+    def get_chart_recommendation(self, df, user_query, table_data=None):
+        """Get chart recommendation from AutoGen agent"""
+        try:
+            if df is None or df.empty:
+                return {"chart_type": "none", "reasoning": "No data available for visualization"}
+            
+            chart_agent = self.create_chart_recommendation_agent()
+            if not chart_agent:
+                return {"chart_type": "none", "reasoning": "Could not create chart agent"}
+            
+            # Prepare the data summary for the agent
+            data_summary = f"""
+DataFrame Info:
+- Shape: {df.shape}
+- Columns: {list(df.columns)}
+- Data types: {dict(df.dtypes)}
+- Sample data (first 3 rows):
+{df.head(3).to_string()}
+
+User Query: {user_query}
+
+Please recommend the best chart type for this data and query.
+"""
+            
+            # Create a user proxy for the interaction
+            user_proxy = UserProxyAgent(
+                name="user_proxy",
+                human_input_mode="NEVER",
+                max_consecutive_auto_reply=1,
+                llm_config=self.llm_config
+            )
+            
+            # Start the conversation
+            chat_result = user_proxy.initiate_chat(
+                chart_agent,
+                message=data_summary
+            )
+            
+            # Extract the recommendation from the agent's response
+            if chat_result and hasattr(chat_result, 'chat_history'):
+                last_message = chat_result.chat_history[-1]
+                if hasattr(last_message, 'content'):
+                    response = last_message.content
+                    
+                    # Try to parse JSON from the response
+                    import json
+                    import re
+                    
+                    # Look for JSON in the response
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if json_match:
+                        try:
+                            recommendation = json.loads(json_match.group())
+                            return recommendation
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    # Fallback: try to extract chart type from text
+                    if "bar" in response.lower():
+                        return {"chart_type": "bar", "reasoning": "Extracted from agent response"}
+                    elif "line" in response.lower():
+                        return {"chart_type": "line", "reasoning": "Extracted from agent response"}
+                    elif "pie" in response.lower():
+                        return {"chart_type": "pie", "reasoning": "Extracted from agent response"}
+                    elif "scatter" in response.lower():
+                        return {"chart_type": "scatter", "reasoning": "Extracted from agent response"}
+                    else:
+                        return {"chart_type": "none", "reasoning": "No clear chart recommendation found"}
+            
+            return {"chart_type": "none", "reasoning": "No response from chart agent"}
+            
+        except Exception as e:
+            print(f"Error getting chart recommendation: {e}")
+            return {"chart_type": "none", "reasoning": f"Error: {str(e)}"}
+
+    def generate_chart(self, df, chart_recommendation):
+        """Generate a chart based on the recommendation"""
+        try:
+            if not chart_recommendation or chart_recommendation.get("chart_type") == "none":
+                return None
+            
+            chart_type = chart_recommendation.get("chart_type")
+            x_column = chart_recommendation.get("x_column")
+            y_column = chart_recommendation.get("y_column")
+            title = chart_recommendation.get("title", "Data Visualization")
+            
+            import plotly.express as px
+            import plotly.graph_objects as go
+            
+            # Validate columns exist
+            if x_column and x_column not in df.columns:
+                x_column = df.columns[0] if len(df.columns) > 0 else None
+            if y_column and y_column not in df.columns:
+                y_column = df.columns[1] if len(df.columns) > 1 else None
+            
+            # Generate chart based on type
+            if chart_type == "bar":
+                if x_column and y_column:
+                    fig = px.bar(df, x=x_column, y=y_column, title=title)
+                else:
+                    # Use first two columns
+                    fig = px.bar(df, x=df.columns[0], y=df.columns[1], title=title)
+                    
+            elif chart_type == "line":
+                if x_column and y_column:
+                    fig = px.line(df, x=x_column, y=y_column, title=title)
+                else:
+                    fig = px.line(df, x=df.columns[0], y=df.columns[1], title=title)
+                    
+            elif chart_type == "pie":
+                if y_column:
+                    fig = px.pie(df, values=y_column, names=x_column or df.columns[0], title=title)
+                else:
+                    fig = px.pie(df, values=df.columns[1], names=df.columns[0], title=title)
+                    
+            elif chart_type == "scatter":
+                if x_column and y_column:
+                    fig = px.scatter(df, x=x_column, y=y_column, title=title)
+                else:
+                    fig = px.scatter(df, x=df.columns[0], y=df.columns[1], title=title)
+                    
+            elif chart_type == "histogram":
+                if x_column:
+                    fig = px.histogram(df, x=x_column, title=title)
+                else:
+                    fig = px.histogram(df, x=df.columns[0], title=title)
+                    
+            elif chart_type == "box":
+                if y_column:
+                    fig = px.box(df, y=y_column, title=title)
+                else:
+                    fig = px.box(df, y=df.columns[1], title=title)
+                    
+            else:
+                return None
+            
+            # Update layout for better appearance
+            fig.update_layout(
+                height=400,
+                margin=dict(l=20, r=20, t=40, b=20),
+                showlegend=True
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error generating chart: {e}")
+            return None
 
 def test_ollama_connection():
     """Test Ollama connectivity and model availability"""
